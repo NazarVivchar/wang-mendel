@@ -60,15 +60,14 @@ def kronecker_delta(i, j):
 
 # Клас для реалізації навчання та використання Шару Фазифікації 
 class FuzzifyingLayer:
-    def __init__(self, membership_functions_count, input_vector_length, c_initial, s_initial):
+    def __init__(self, membership_functions_count, input_vector_length, c_initial):
         self.membership_functions_count = membership_functions_count
         self.input_vector_length = input_vector_length
         self.c = []
-        self.s = []
+        self.s = (membership_functions_count - 1) ** -1
 
         for i in range(self.input_vector_length):
             self.c.append(c_initial)
-            self.s.append(s_initial)
 
     def fuzzify(self, input_vector):
         memberships_matrix = []
@@ -86,23 +85,20 @@ class FuzzifyingLayer:
         return memberships_matrix
 
     def calculate_membership_for_x(self, x, i, j):
-        c, s = self.c[i][j], self.s[i][j]
+        c, s = self.c[i][j], self.s
 
-        membership = 1 / (1 + (((x - c) / s) ** 2))
+        membership = math.exp(- (((x - c) ** 2) / (2 * (s ** 2))))
 
         return membership
 
     def train(self, v_c, v_s, predicted_value, actual_values, weights, input_vector):
         c_copy = np.empty_like(self.c)
-        s_copy = np.empty_like(self.s)
 
         for r in range(len(self.c)):
             for l in range(len(self.c[r])):
                 c_copy[r][l] = self.calculate_new_c(r, l, weights, v_c, predicted_value, actual_values, input_vector)
-                s_copy[r][l] = self.calculate_new_s(r, l, weights, v_s, predicted_value, actual_values, input_vector)
 
         self.c = c_copy
-        self.s = s_copy
 
     def calculate_new_c(self, r, j, weights, v_c, predicted_value, actual_value, input_vector):
         memberships_matrix = self.fuzzify(input_vector)
@@ -110,30 +106,13 @@ class FuzzifyingLayer:
         return self.c[r][j] - v_c * self.calculate_de_to_dc(r, j, weights, predicted_value, actual_value, input_vector,
                                                             memberships_matrix)
 
-    def calculate_new_s(self, r, j, weights, v_s, predicted_value, actual_value, input_vector):
-        memberships_matrix = self.fuzzify(input_vector)
-
-        return self.s[r][j] - v_s * self.calculate_de_to_ds(r, j, weights, predicted_value, actual_value,
-                                                            input_vector, memberships_matrix)
-
-
-def calculate_de_to_dc(self, r, j, weights, predicted_value, actual_value, input_vector, memberships_matrix):
+    def calculate_de_to_dc(self, r, j, weights, predicted_value, actual_value, input_vector, memberships_matrix):
         error_derivative = np.sum(predicted_value - actual_value)
 
         weighted_outputs = 0
 
         for l in range(len(weights)):
             weighted_outputs += weights[l] * self.calculate_dy_to_dc(l, r, j, input_vector, memberships_matrix)
-
-        return error_derivative * weighted_outputs
-
-    def calculate_de_to_ds(self, r, j, weights, predicted_value, actual_value, input_vector, memberships_matrix):
-        error_derivative = np.sum(predicted_value - actual_value)
-
-        weighted_outputs = 0
-
-        for l in range(len(weights)):
-            weighted_outputs += weights[l] * self.calculate_dy_to_ds(l, r, j, input_vector, memberships_matrix)
 
         return error_derivative * weighted_outputs
 
@@ -149,32 +128,12 @@ def calculate_de_to_dc(self, r, j, weights, predicted_value, actual_value, input
 
         return dy_to_dc
 
-    def calculate_dy_to_ds(self, l, r, j, input_vector, memberships_matrix):
-        m = self.calculate_m(memberships_matrix)
-        t = self.calculate_t(l, memberships_matrix)
-
-        first_multiplier = (kronecker_delta(l, r) * m - t) / (m ** 2)
-        second_multiplier = self.calculate_t_excluding(r, j, memberships_matrix)
-        third_multiplier = self.calculate_dm_to_ds(r, j, input_vector)
-
-        dy_to_dc = first_multiplier * second_multiplier * third_multiplier
-
-        return dy_to_dc
-
     def calculate_dm_to_dc(self, r, j, input_vector):
         x = input_vector[r]
         c = self.c[r][j]
-        s = self.s[r][j]
+        s = self.s
 
-        return math.exp(-(((x - c) ** 2) / (2 * (s ** 2)))) * ((x - c) / (s ** 2))
-
-
-def calculate_dm_to_ds(self, r, j, input_vector):
-        x = input_vector[r]
-        c = self.c[r][j]
-        s = self.s[r][j]
-
-        return math.exp(-(((x - c) ** 2) / (2 * (s ** 2)))) * (((x - c) ** 2) / (s ** 3))
+        return (math.exp(- (((x - c) ** 2) / 2 * (s ** 2))) * (x - c)) / (self.s ** 2)
 
     def calculate_m(self, memberships_matrix):
         result = 0
